@@ -1,0 +1,37 @@
+# Python cache and build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local tool / editor state
+.vscode/
+.idea/
+.sixth/
+
+# Runtime outputs
+outputs/
+*.log
+
+# Model artifacts
+models/*.h5
+models/*.keras
+models/*.ckpt
+models/checkpoints/
+
+# Local datasets and generated samples
+data/cholecseg/
+data/synthetic/generated/
+
+# OS files
+.DS_Store
+Thumbs.db
