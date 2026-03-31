@@ -58,6 +58,11 @@ def parse_args():
         default=0.2,
         help="Fraction of data reserved for validation.",
     )
+    parser.add_argument(
+        "--pretrained-weights",
+        default="models/unet_weights.h5",
+        help="Path to pre-trained weights for fine-tuning. Set to empty string to train from scratch.",
+    )
     return parser.parse_args()
 
 
@@ -217,7 +222,15 @@ def main():
     images, masks = load_training_arrays(paired_samples, target_size=target_size)
     print(f"Training data shapes: images={images.shape}, masks={masks.shape}")
 
-    model = SegmentationModel(mode="ml", input_size=target_size)
+    # Load pre-trained weights if specified (for fine-tuning)
+    weights_to_load = args.pretrained_weights if args.pretrained_weights else None
+    if weights_to_load and not Path(weights_to_load).exists():
+        print(f"Warning: Pre-trained weights not found at {weights_to_load}. Training from scratch.")
+        weights_to_load = None
+    elif weights_to_load:
+        print(f"Loading pre-trained weights from {weights_to_load} for fine-tuning...")
+
+    model = SegmentationModel(mode="ml", input_size=target_size, weights_path=weights_to_load)
     history = model.train_on_arrays(
         images=images,
         masks=masks,
