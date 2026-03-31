@@ -160,6 +160,7 @@ class SegmentationModel:
         epochs: int = 5,
         batch_size: int = 4,
         validation_split: float = 0.2,
+        callbacks=None,
     ):
         if tf is None:
             raise RuntimeError("TensorFlow is required for training.")
@@ -180,6 +181,7 @@ class SegmentationModel:
             epochs=epochs,
             batch_size=batch_size,
             validation_split=validation_split,
+            callbacks=callbacks,
             verbose=1,
         )
         self.mode = "ml"

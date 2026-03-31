@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
+import tensorflow as tf
 
 from image_processor import CLASS_COLORS, DatasetSample, SurgicalImageProcessor
 from segmentation_model import SegmentationModel
@@ -62,6 +63,35 @@ def parse_args():
         "--pretrained-weights",
         default="models/unet_weights.h5",
         help="Path to pre-trained weights for fine-tuning. Set to empty string to train from scratch.",
+    )
+    parser.add_argument(
+        "--best-weights-path",
+        default="models/unet_best_weights.h5",
+        help="Where to save the best validation weights during training.",
+    )
+    parser.add_argument(
+        "--monitor-metric",
+        default="val_mean_iou",
+        choices=["val_loss", "val_accuracy", "val_dice_coefficient", "val_mean_iou"],
+        help="Validation metric used for checkpointing and early stopping.",
+    )
+    parser.add_argument(
+        "--early-stopping-patience",
+        type=int,
+        default=4,
+        help="Stop training if the monitored validation metric does not improve for this many epochs.",
+    )
+    parser.add_argument(
+        "--reduce-lr-patience",
+        type=int,
+        default=2,
+        help="Reduce learning rate if the monitored validation metric plateaus for this many epochs.",
+    )
+    parser.add_argument(
+        "--min-delta",
+        type=float,
+        default=0.001,
+        help="Minimum improvement required to count as progress for monitored validation metrics.",
     )
     return parser.parse_args()
 
@@ -192,9 +222,57 @@ def load_training_arrays(
     return np.asarray(images, dtype=np.float32), np.asarray(masks, dtype=np.uint8)
 
 
+def build_training_callbacks(args) -> List[tf.keras.callbacks.Callback]:
+    monitor_mode = "min" if args.monitor_metric == "val_loss" else "max"
+
+    callbacks: List[tf.keras.callbacks.Callback] = []
+
+    best_weights_path = Path(args.best_weights_path)
+    best_weights_path.parent.mkdir(parents=True, exist_ok=True)
+    callbacks.append(
+        tf.keras.callbacks.ModelCheckpoint(
+            filepath=str(best_weights_path),
+            monitor=args.monitor_metric,
+            mode=monitor_mode,
+            save_best_only=True,
+            save_weights_only=True,
+            verbose=1,
+        )
+    )
+
+    callbacks.append(
+        tf.keras.callbacks.EarlyStopping(
+            monitor=args.monitor_metric,
+            mode=monitor_mode,
+            patience=args.early_stopping_patience,
+            min_delta=args.min_delta,
+            restore_best_weights=True,
+            verbose=1,
+        )
+    )
+
+    callbacks.append(
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor=args.monitor_metric,
+            mode=monitor_mode,
+            patience=args.reduce_lr_patience,
+            factor=0.5,
+            min_delta=args.min_delta,
+            verbose=1,
+        )
+    )
+
+    return callbacks
+
+
 def main():
     args = parse_args()
     target_size = (args.width, args.height)
+
+    if args.validation_split <= 0.0:
+        raise ValueError("validation_split must be greater than 0 when using checkpointing and early stopping.")
+    if args.validation_split >= 1.0:
+        raise ValueError("validation_split must be less than 1.0.")
 
     if args.dataset_dir:
         mask_suffixes = parse_mask_suffixes(args.mask_suffix, args.extra_mask_suffixes)
@@ -231,13 +309,19 @@ def main():
         print(f"Loading pre-trained weights from {weights_to_load} for fine-tuning...")
 
     model = SegmentationModel(mode="ml", input_size=target_size, weights_path=weights_to_load)
+    callbacks = build_training_callbacks(args)
     history = model.train_on_arrays(
         images=images,
         masks=masks,
         epochs=args.epochs,
         batch_size=args.batch_size,
         validation_split=args.validation_split,
+        callbacks=callbacks,
     )
+
+    best_weights_path = Path(args.best_weights_path)
+    if best_weights_path.exists():
+        print(f"Best validation weights were saved to {best_weights_path}")
 
     output_weights = Path(args.output_weights)
     output_weights.parent.mkdir(parents=True, exist_ok=True)

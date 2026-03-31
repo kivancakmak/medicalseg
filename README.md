@@ -78,6 +78,12 @@ Train with:
 
 The saved training history now includes `accuracy`, `dice_coefficient`, and `mean_iou` for both training and validation.
 
+Training now also:
+
+- saves the best validation checkpoint during the run
+- uses early stopping to end training when the monitored validation metric stops improving
+- reduces the learning rate when validation performance plateaus
+
 If your images and masks are in the same folder with names like `frame_00_endo.png` and `frame_00_endo_color_mask.png`, train with:
 
 ```powershell
@@ -90,11 +96,32 @@ If the same folder also contains alternatives like `frame_00_endo_mask.png` and 
 .venv\Scripts\python.exe train.py --dataset-dir data\cholecseg --mask-suffix _color_mask --extra-mask-suffixes _mask,_watershed_mask --epochs 10 --batch-size 4 --output-weights models\unet_weights.h5
 ```
 
+You can control the validation-based stopping and checkpoint behavior with:
+
+```powershell
+.venv\Scripts\python.exe train.py --dataset-dir data\cholecseg --mask-suffix _color_mask --extra-mask-suffixes _mask,_watershed_mask --epochs 20 --batch-size 4 --best-weights-path models\unet_best_weights.h5 --monitor-metric val_mean_iou --early-stopping-patience 4 --reduce-lr-patience 2
+```
+
 Then run inference with the trained weights:
 
 ```powershell
 .venv\Scripts\python.exe main.py --mode image --model-mode ml --weights models\unet_weights.h5 --input "C:\path\to\image.png" --save-dir outputs
 ```
+
+## Comparing OpenCV Vs U-Net
+
+To compare the classical OpenCV segmentation against your trained U-Net on the same labeled dataset:
+
+```powershell
+.venv\Scripts\python.exe evaluate.py --dataset-dir data\cholecseg --mask-suffix _color_mask --extra-mask-suffixes _mask,_watershed_mask --weights models\unet_best_weights.h5 --report-path outputs\comparison_report.json --preview-dir outputs\comparison_previews
+```
+
+This saves:
+
+- aggregate metrics for both methods in `outputs\comparison_report.json`
+- side-by-side preview images in `outputs\comparison_previews\`
+
+The report includes pixel accuracy, foreground Dice, foreground IoU, mean class Dice, and mean class IoU for both pipelines.
 
 ## CholecSeg Dataset Placement
 
