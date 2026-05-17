@@ -11,6 +11,20 @@ from image_processor import CLASS_COLORS, DatasetSample, SurgicalImageProcessor
 from segmentation_model import SegmentationModel
 
 
+def to_jsonable(value):
+    if isinstance(value, dict):
+        return {str(key): to_jsonable(subvalue) for key, subvalue in value.items()}
+    if isinstance(value, list):
+        return [to_jsonable(item) for item in value]
+    if isinstance(value, tuple):
+        return [to_jsonable(item) for item in value]
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    return value
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Train the surgical segmentation U-Net on a local image/mask dataset."
@@ -331,7 +345,7 @@ def main():
     history_path = Path(args.history_path)
     history_path.parent.mkdir(parents=True, exist_ok=True)
     with history_path.open("w", encoding="utf-8") as handle:
-        json.dump(history.history, handle, indent=2)
+        json.dump(to_jsonable(history.history), handle, indent=2)
     print(f"Saved history to {history_path}")
 
 

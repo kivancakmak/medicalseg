@@ -30,6 +30,7 @@ models/checkpoints/
 
 # Local datasets and generated samples
 data/cholecseg/
+data/prepared/
 data/synthetic/generated/
 
 # OS files
