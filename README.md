@@ -113,12 +113,13 @@ Then run inference with the trained weights:
 To compare the classical OpenCV segmentation against your trained U-Net on the same labeled dataset:
 
 ```powershell
-.venv\Scripts\python.exe evaluate.py --dataset-dir data\cholecseg --mask-suffix _color_mask --extra-mask-suffixes _mask,_watershed_mask --weights models\unet_best_weights.h5 --report-path outputs\comparison_report.json --preview-dir outputs\comparison_previews
+.venv\Scripts\python.exe evaluate.py --dataset-dir data\cholecseg --mask-suffix _color_mask --extra-mask-suffixes _mask,_watershed_mask --weights models\unet_best_weights.h5 --report-json outputs\comparison_report.json --report-csv outputs\comparison_report.csv --preview-dir outputs\comparison_previews
 ```
 
 This saves:
 
 - aggregate metrics for both methods in `outputs\comparison_report.json`
+- per-image metrics in `outputs\comparison_report.csv`
 - side-by-side preview images in `outputs\comparison_previews\`
 
 The report includes pixel accuracy, foreground Dice, foreground IoU, mean class Dice, and mean class IoU for both pipelines.
