@@ -107,8 +107,9 @@ def process_frame(
     pwm_controller: Optional[JetsonPWMController],
     smoother: SmoothedLightOutput,
     processor: SurgicalImageProcessor,
-    elapsed_seconds: float,
-) -> Tuple[np.ndarray, LightDecision]:
+    display_seconds: Optional[float] = None,
+) -> Tuple[np.ndarray, LightDecision, float]:
+    start_time = time.perf_counter()
     inference_output = inference_engine.predict_mask(frame)
     decision = light_logic.compute_adjustment(frame, inference_output.mask)
     smoothed_zones = smoother.update(decision.zone_intensities)
@@ -116,7 +117,11 @@ def process_frame(
     if pwm_controller is not None:
         pwm_controller.apply_zone_intensities(smoothed_zones)
 
-    fps = 1.0 / elapsed_seconds if elapsed_seconds > 0 else 0.0
+    elapsed_seconds = max(time.perf_counter() - start_time, 1e-6)
+    # Label this frame with the carried-forward duration when one is supplied
+    # (streaming), otherwise with this frame's own measured duration (stills).
+    shown_seconds = display_seconds if display_seconds is not None else elapsed_seconds
+    fps = 1.0 / shown_seconds if shown_seconds > 0 else 0.0
     annotated = annotate_frame(
         frame=frame,
         mask=inference_output.mask,
@@ -125,7 +130,7 @@ def process_frame(
         fps=fps,
         processor=processor,
     )
-    return annotated, decision
+    return annotated, decision, elapsed_seconds
 
 
 def run_image(args, inference_engine, light_logic, pwm_controller, smoother, processor) -> None:
@@ -134,15 +139,13 @@ def run_image(args, inference_engine, light_logic, pwm_controller, smoother, pro
         raise FileNotFoundError(f"Input image not found: {image_path}")
 
     frame = processor.load_image(str(image_path))
-    start_time = time.perf_counter()
-    annotated, decision = process_frame(
+    annotated, decision, _elapsed = process_frame(
         frame=frame,
         inference_engine=inference_engine,
         light_logic=light_logic,
         pwm_controller=pwm_controller,
         smoother=smoother,
         processor=processor,
-        elapsed_seconds=max(time.perf_counter() - start_time, 1e-6),
     )
 
     save_dir = Path(args.save_dir)
@@ -176,6 +179,7 @@ def run_stream(args, inference_engine, light_logic, pwm_controller, smoother, pr
     capture = open_capture(args)
     writer = None
     frame_index = 0
+    last_elapsed: Optional[float] = None
 
     try:
         while args.max_frames <= 0 or frame_index < args.max_frames:
@@ -183,15 +187,16 @@ def run_stream(args, inference_engine, light_logic, pwm_controller, smoother, pr
             if not ok:
                 break
 
-            start_time = time.perf_counter()
-            annotated, decision = process_frame(
+            # Annotate with the previous frame's measured duration so the FPS
+            # label reflects real inference time; the first frame uses its own.
+            annotated, decision, last_elapsed = process_frame(
                 frame=frame,
                 inference_engine=inference_engine,
                 light_logic=light_logic,
                 pwm_controller=pwm_controller,
                 smoother=smoother,
                 processor=processor,
-                elapsed_seconds=max(time.perf_counter() - start_time, 1e-6),
+                display_seconds=last_elapsed,
             )
 
             if args.output_video and writer is None:
