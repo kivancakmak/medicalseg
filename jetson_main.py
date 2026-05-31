@@ -10,6 +10,7 @@ from camera import open_camera
 from image_processor import SurgicalImageProcessor
 from jetson_inference import resolve_default_weights, select_inference_engine
 from light_controller import IntelligentLightController, LightDecision
+from pca9685_controller import PCA9685LightController
 from pwm_controller import JetsonPWMController, clamp_intensity
 
 
@@ -54,7 +55,18 @@ def parse_args():
     parser.add_argument("--output-video", help="Optional annotated output video path.")
     parser.add_argument("--max-frames", type=int, default=0, help="Maximum stream frames. Use 0 for no limit.")
     parser.add_argument("--fps", type=float, default=20.0, help="Output video FPS.")
-    parser.add_argument("--pwm-frequency", type=int, default=50, help="PWM frequency in Hz.")
+    parser.add_argument(
+        "--pwm-backend",
+        choices=["pca9685", "jetson"],
+        default="pca9685",
+        help="PWM backend: pca9685 (external I2C, 4 zones) or jetson (onboard GPIO).",
+    )
+    parser.add_argument(
+        "--pwm-frequency",
+        type=int,
+        default=None,
+        help="PWM frequency in Hz. Defaults to 1000 for pca9685, 50 for jetson.",
+    )
     parser.add_argument("--start-intensity", type=float, default=0.0, help="Initial PWM duty cycle.")
     parser.add_argument("--smooth-alpha", type=float, default=0.35, help="Light smoothing alpha.")
     parser.add_argument("--max-light-step", type=float, default=12.0, help="Max duty-cycle change per frame.")
@@ -255,11 +267,20 @@ def main():
 
     pwm_controller = None
     if not args.no_lights:
-        pwm_controller = JetsonPWMController(
-            frequency_hz=args.pwm_frequency,
-            start_intensity=args.start_intensity,
-            verbose_stub=not args.quiet_stub,
-        )
+        if args.pwm_backend == "pca9685":
+            frequency_hz = args.pwm_frequency if args.pwm_frequency is not None else 1000
+            pwm_controller = PCA9685LightController(
+                frequency_hz=frequency_hz,
+                start_intensity=args.start_intensity,
+                verbose_stub=not args.quiet_stub,
+            )
+        else:
+            frequency_hz = args.pwm_frequency if args.pwm_frequency is not None else 50
+            pwm_controller = JetsonPWMController(
+                frequency_hz=frequency_hz,
+                start_intensity=args.start_intensity,
+                verbose_stub=not args.quiet_stub,
+            )
 
     try:
         if pwm_controller is not None:

@@ -29,3 +29,9 @@ pycuda==2020.1
 
 # Used to inspect / validate the exported .onnx model before TensorRT conversion.
 onnx==1.11.0
+
+# PCA9685 I2C PWM backend (pca9685_controller.py). Only needed when the external
+# PCA9685 light driver board is actually attached; without these (or without the
+# I2C bus) the controller degrades to a print-only stub.
+adafruit-blinka
+adafruit-circuitpython-pca9685
