@@ -5,6 +5,7 @@ from typing import Optional
 import cv2
 import numpy as np
 
+from camera import open_camera
 from image_processor import SurgicalImageProcessor
 from light_controller import IntelligentLightController, LightDecision, MockLightHardware
 from segmentation_model import SegmentationModel, SegmentationResult
@@ -32,7 +33,9 @@ def parse_args():
     parser.add_argument("--output-video", help="Optional path for saving annotated video output.")
     parser.add_argument("--display", action="store_true", help="Display frames using OpenCV windows.")
     parser.add_argument("--frames", type=int, default=5, help="Number of synthetic frames to generate.")
-    parser.add_argument("--camera-index", type=int, default=0, help="Webcam device index.")
+    parser.add_argument("--camera-index", type=int, default=0, help="Webcam device index, or CSI sensor-id when --csi is set.")
+    parser.add_argument("--csi", action="store_true", help="Open a CSI camera (e.g. IMX219-77) via a GStreamer pipeline (webcam mode).")
+    parser.add_argument("--flip-method", type=int, default=0, help="nvvidconv flip-method for the CSI pipeline (0=none).")
     parser.add_argument("--width", type=int, default=640, help="Synthetic frame width.")
     parser.add_argument("--height", type=int, default=480, help="Synthetic frame height.")
     parser.add_argument(
@@ -171,21 +174,25 @@ def run_stream(
     controller: IntelligentLightController,
     hardware: Optional[MockLightHardware],
 ) -> None:
-    source = args.camera_index if args.mode == "webcam" else args.input
-    if args.mode == "video" and not args.input:
-        raise ValueError("--input is required when --mode video is used.")
     if args.mode == "video":
+        if not args.input:
+            raise ValueError("--input is required when --mode video is used.")
         input_path = Path(args.input)
         if not input_path.exists():
             hint = ""
             if args.input.lower() == r"path\to\video.mp4":
                 hint = " Replace that example path with the real location of your video file."
             raise FileNotFoundError(f"Input video not found: {args.input}.{hint}")
-        source = str(input_path)
-
-    capture = cv2.VideoCapture(source)
-    if not capture.isOpened():
-        raise RuntimeError(f"Unable to open input source: {source}")
+        capture = cv2.VideoCapture(str(input_path))
+        if not capture.isOpened():
+            raise RuntimeError(f"Unable to open input source: {input_path}")
+    else:
+        capture = open_camera(
+            use_csi=args.csi,
+            camera_index=args.camera_index,
+            sensor_id=args.camera_index,
+            flip_method=args.flip_method,
+        )
 
     writer = None
     frame_index = 0

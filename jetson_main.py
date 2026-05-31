@@ -6,6 +6,7 @@ from typing import Dict, Optional, Tuple
 import cv2
 import numpy as np
 
+from camera import open_camera
 from image_processor import SurgicalImageProcessor
 from jetson_inference import resolve_default_weights, select_inference_engine
 from light_controller import IntelligentLightController, LightDecision
@@ -40,7 +41,9 @@ def parse_args():
     )
     parser.add_argument("--image", help="Run one still image through the full pipeline.")
     parser.add_argument("--input-video", help="Run a video file through the pipeline.")
-    parser.add_argument("--camera-index", type=int, default=0, help="Camera index for cv2.VideoCapture.")
+    parser.add_argument("--camera-index", type=int, default=0, help="USB camera index, or CSI sensor-id when --csi is set.")
+    parser.add_argument("--csi", action="store_true", help="Open a CSI camera (e.g. IMX219-77) via a GStreamer pipeline.")
+    parser.add_argument("--flip-method", type=int, default=0, help="nvvidconv flip-method for the CSI pipeline (0=none).")
     parser.add_argument("--width", type=int, default=256, help="Segmentation model input width.")
     parser.add_argument("--height", type=int, default=256, help="Segmentation model input height.")
     parser.add_argument("--trt-engine", default="models/segmentation.trt", help="TensorRT engine path.")
@@ -165,14 +168,17 @@ def open_capture(args):
         video_path = Path(args.input_video)
         if not video_path.exists():
             raise FileNotFoundError(f"Input video not found: {video_path}")
-        source = str(video_path)
-    else:
-        source = args.camera_index
+        capture = cv2.VideoCapture(str(video_path))
+        if not capture.isOpened():
+            raise RuntimeError(f"Unable to open video source: {video_path}")
+        return capture
 
-    capture = cv2.VideoCapture(source)
-    if not capture.isOpened():
-        raise RuntimeError(f"Unable to open video source: {source}")
-    return capture
+    return open_camera(
+        use_csi=args.csi,
+        camera_index=args.camera_index,
+        sensor_id=args.camera_index,
+        flip_method=args.flip_method,
+    )
 
 
 def run_stream(args, inference_engine, light_logic, pwm_controller, smoother, processor) -> None:
