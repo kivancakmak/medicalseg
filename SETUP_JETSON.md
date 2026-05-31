@@ -154,6 +154,54 @@ re-run the command above.
 
 ---
 
+## 6. Build the TensorRT engine (`models/segmentation.trt`)
+
+The inference pipeline ([jetson_inference.py](jetson_inference.py)) loads
+`models/segmentation.trt`. That engine is produced in **two stages**:
+
+- **Stage 1 — on the PC (where TensorFlow works):** export the trained Keras
+  U-Net to a portable ONNX file.
+
+  ```powershell
+  # On your training PC, in the desktop venv (requirements-dev.txt):
+  python export_onnx.py --weights models\unet_best_weights.h5 --output models\segmentation.onnx
+  ```
+
+  Copy the resulting `models/segmentation.onnx` to the Jetson (e.g. via `scp`):
+
+  ```bash
+  scp models/segmentation.onnx nano@<jetson-ip>:~/Project-MedicalSeg/models/
+  ```
+
+- **Stage 2 — on the Jetson (this must run on-device):** convert the ONNX to a
+  TensorRT engine with `trtexec`.
+
+  > **TensorRT engines are NOT portable.** They are tied to the exact GPU,
+  > TensorRT version, and CUDA build on the machine that created them. You
+  > **cannot** build the `.trt` on your PC and copy it over — it must be built
+  > on the Nano itself, against its JetPack 4.6 / TensorRT 8.x stack.
+
+  ```bash
+  cd ~/Project-MedicalSeg
+  /usr/src/tensorrt/bin/trtexec \
+      --onnx=models/segmentation.onnx \
+      --saveEngine=models/segmentation.trt \
+      --fp16
+  ```
+
+  Notes:
+
+  - `trtexec` ships with JetPack at `/usr/src/tensorrt/bin/trtexec`; it is not on
+    `PATH` by default, so call it with the full path (or add it to `PATH`).
+  - `--fp16` enables half-precision, which is faster and uses less memory on the
+    Nano. Drop it for a plain FP32 engine if you hit accuracy issues.
+  - The build can take **several minutes** and is memory-hungry — the 4 GB swap
+    file from step 1 must be active, or `trtexec` may be killed by the OOM killer.
+  - On success you will have `models/segmentation.trt`. Re-run the verification
+    from step 5; it should now report `backend=tensorrt`.
+
+---
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -163,3 +211,6 @@ re-run the command above.
 | `pycuda` build: "Could not find nvcc" | The CUDA env vars from step 3 were not exported in this shell. Re-export and retry. |
 | Out-of-memory during `pip install` | Swap not active. Re-check step 1 (`swapon --show`). |
 | `cv2` shows a pip version, not 4.1.1 | A pip `opencv-python` is shadowing the system build. `pip uninstall opencv-python` and rely on the system package. |
+| `trtexec` killed / "Killed" during engine build | Out of memory. Ensure the 4 GB swap from step 1 is active (`swapon --show`) and close other processes. |
+| `trtexec: command not found` | Use the full path `/usr/src/tensorrt/bin/trtexec`; it is not on `PATH` by default. |
+| Engine fails to deserialize at inference | The `.trt` was built on a different machine/TensorRT version. Rebuild it on this Nano from the ONNX (stage 2). |
